@@ -25,3 +25,14 @@ replay_pid*
 
 # Intellij
 .idea/
+
+# target directory
+target/
+launcher-ui/target
+worker-jr-611/target
+worker-jr-621/target
+
+# dependency reduced pom
+launcher-ui/dependency-reduced-pom.xml
+worker-jr-611/dependency-reduced-pom.xml
+worker-jr-621/dependency-reduced-pom.xml
