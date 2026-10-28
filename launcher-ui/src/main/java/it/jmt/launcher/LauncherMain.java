@@ -17,7 +17,12 @@ import javafx.stage.Stage;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class LauncherMain extends Application {
 
@@ -124,12 +129,17 @@ public class LauncherMain extends Application {
 
         String jarName = selectedVersion.equals("6.1.1") ? "worker-jr-611-fat.jar" : "worker-jr-621-fat.jar";
 
-        String workerPath = Paths.get("workers", jarName).toString();
-
-        File workerFile = new File(workerPath);
-        if (!workerFile.exists()) {
-            globalStatusLabel.setText("❌ Errore: File worker non trovato in: " + workerFile.getAbsolutePath());
+        List<Path> candidates = workerCandidates(jarName);
+        File workerFile = candidates.stream()
+                .filter(Files::isRegularFile)
+                .map(Path::toFile)
+                .findFirst()
+                .orElse(null);
+        if (workerFile == null) {
+            String searched = candidates.stream().map(Path::toString).collect(Collectors.joining("\n"));
+            globalStatusLabel.setText("❌ Errore: File worker " + jarName + " non trovato.");
             globalStatusLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold;");
+            showAlert(Alert.AlertType.ERROR, "Worker non trovato", "Percorsi cercati:\n" + searched);
             return;
         }
 
@@ -176,6 +186,49 @@ public class LauncherMain extends Application {
                 });
             }
         }).start();
+    }
+
+    private List<Path> workerCandidates(String jarName) {
+        List<Path> candidates = new ArrayList<>();
+
+        String overrideDir = System.getProperty("jmt.workers.dir");
+        if (overrideDir != null && !overrideDir.isBlank()) {
+            candidates.add(Paths.get(overrideDir, jarName));
+        }
+
+        String appPath = System.getProperty("jpackage.app-path");
+        if (appPath != null) {
+            Path appDir = Paths.get(appPath).getParent().resolve("app");
+            candidates.add(appDir.resolve("workers").resolve(jarName));
+            candidates.add(appDir.resolve(jarName));
+        }
+
+        Path codeSource = codeSourceLocation();
+        if (codeSource != null) {
+            Path baseDir = Files.isRegularFile(codeSource) ? codeSource.getParent() : codeSource;
+            candidates.add(baseDir.resolve("workers").resolve(jarName));
+            candidates.add(baseDir.resolve(jarName));
+
+            String moduleName = jarName.replace("-fat.jar", "");
+            for (Path dir = baseDir; dir != null; dir = dir.getParent()) {
+                Path devJar = dir.resolve(moduleName).resolve("target").resolve(jarName);
+                if (Files.isDirectory(dir.resolve(moduleName))) {
+                    candidates.add(devJar);
+                    break;
+                }
+            }
+        }
+
+        candidates.add(Paths.get("workers", jarName).toAbsolutePath());
+        return candidates;
+    }
+
+    private Path codeSourceLocation() {
+        try {
+            return Paths.get(LauncherMain.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private VBox buildGrid(TextField sourceField, Button srcBtn, TextField dirField, Button dirBtn, TextField nameField, Button actionBtn, String sourceLabel) {
